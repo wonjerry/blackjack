@@ -5,24 +5,25 @@ var sprite_sheet_image;
 var hitButton, standButton, betButton, betInput;
 
 var first = true;
-var bettingViewFlag=true, playViewFlag=false;
+var bettingViewFlag = true,
+  playViewFlag = false;
 
 var game;
 
 // 카드를 배치시키기 위한 좌표이다.
 var DealerCardPositionXY = [
-  [72, 62],
-  [162, 62],
-  [252, 62],
-  [342, 62],
-  [432, 62]
+  [72, 52],
+  [162, 52],
+  [252, 52],
+  [342, 52],
+  [432, 52]
 ];
 var PlayerCardPositionXY = [
-  [72, 262],
-  [162, 262],
-  [252, 262],
-  [342, 262],
-  [432, 262]
+  [72, 362],
+  [162, 362],
+  [252, 362],
+  [342, 362],
+  [432, 362]
 ];
 
 /*
@@ -48,7 +49,7 @@ Card.HEART = 3;
 function Card(suit, value) {
   this.suit = -1;
   this.value = -1;
-
+  this.faceDown = false;
   // Card의 생성자의 인자가 2개 이상 들어오면 suit와 value를 저장 한다.
   if (arguments.length >= 2) {
     this.setCardInfo(arguments[0], arguments[1]);
@@ -136,112 +137,223 @@ function BlackjackGame() {
 
   // 맨 처음엔 각각 function을 이용한 객체로 만들었다. 그런데 읽기 불편했다. 그래서 객체 리터럴로 만들어버렸다. 다른데에서 쓸 것도 아니어서 이렇게 했다.
   this.player = {
-    cards : [],
-    money : 100,
-    betMoney : 0,
-    total : 0,
-    addCard : function(ele){
-      if(this.cards.length < 5){
-        this.total += ele.value;
+    cards: [],
+    money: 100,
+    betMoney: 0,
+    total: 0,
+    addCard: function(ele) {
+      if (this.cards.length < 5) {
         this.cards.push(ele);
       }
       //else 예외처리
+    },
+    getTotal: function() {
+      var aceFlag = false;
+
+      this.total = 0;
+      for (var i = 0; i < this.cards.length; i++) {
+        if (this.cards[i].value === Card.ACE) aceFlag = true;
+        else if (this.cards[i].value > 10) this.total += 10;
+        else this.total += Number(this.cards[i].value);
+      }
+
+      if (aceFlag) {
+        if (this.total + 11 <= 21) this.total += 11;
+        else this.total += 1;
+      }
+
+      return this.total;
     }
   };
 
   this.dealer = {
-    cards : [],
-    deck : new Deck(),
-    addCard : function(ele){
-      if(this.cards.length < 5) {
-        this.total += ele.value;
+    cards: [],
+    deck: new Deck(),
+    total: 0,
+    reveal: false,
+    addCard: function(ele) {
+      if (this.cards.length < 5) {
         this.cards.push(ele);
       }
+
       //else 예외처리
+    },
+    getTotal: function() {
+      var aceFlag = false;
+
+      this.total = 0;
+      for (var i = 0; i < this.cards.length; i++) {
+        if (this.cards[i].value === Card.ACE) aceFlag = true;
+        else if (this.cards[i].value > 10) this.total += 10;
+        else this.total += Number(this.cards[i].value);
+      }
+
+      if (aceFlag) {
+        if (this.total + 11 <= 21) this.total += 11;
+        else this.total += 1;
+      }
+
+      return this.total;
     }
   };
 }
 
-BlackjackGame.prototype.setting = function(){
+BlackjackGame.prototype.setting = function() {
   this.dealer.deck = new Deck();
   this.dealer.deck.shuffle();
-
+  game.dealer.reveal = false;
   this.player.cards = [];
   this.player.total = 0;
   this.dealer.cards = [];
   this.dealer.total = 0;
 }
 
-function OnBettingButtonClicked(){
-  if(game.processing) return;
+BlackjackGame.prototype.playerWin = function() {
+  var newMoney = Math.round(Number(this.player.money));
+  var betMoney = Math.round(Number(this.player.betMoney));
+  this.player.money = newMoney + betMoney;
+}
+
+BlackjackGame.prototype.playerLoose = function() {
+  var newMoney = Math.round(Number(this.player.money));
+  var betMoney = Math.round(Number(this.player.betMoney));
+  this.player.money = newMoney - betMoney;
+}
+
+function draw_cards(playerCards, dealerCards) {
+  //(2,4)는 뒷면 이미지.
+
+  dealerCards.forEach(function(dc, i) {
+    if (dc.faceDown) {
+      image(sprite_sheet_image, DealerCardPositionXY[i][0], DealerCardPositionXY[i][1], 79, 123, 2 * 79, 4 * 123, 79, 123);
+    } else {
+      image(sprite_sheet_image, DealerCardPositionXY[i][0], DealerCardPositionXY[i][1], 79, 123, (dc.value - 1) * 79, (dc.suit - 1) * 123, 79, 123);
+    }
+  });
+
+  // 지금은 필요 없지만 나중에 다인용 블랙잭에서는 다른 플레이어의 카드를 가리기 위해 필요할 수 있다.
+  playerCards.forEach(function(pc, i) {
+    if (pc.faceDown) {
+      image(sprite_sheet_image, PlayerCardPositionXY[i][0], PlayerCardPositionXY[i][1], 79, 123, 2 * 79, 4 * 123, 79, 123);
+    } else {
+      image(sprite_sheet_image, PlayerCardPositionXY[i][0], PlayerCardPositionXY[i][1], 79, 123, (pc.value - 1) * 79, (pc.suit - 1) * 123, 79, 123);
+    }
+  });
+
+}
+
+function isNumber(s) {
+  s += ''; // 문자열로 변환
+  s = s.replace(/^\s*|\s*$/g, ''); // 좌우 공백 제거
+  if (s == '' || isNaN(s)) return false;
+  return true;
+}
+
+function OnBettingButtonClicked() {
+  if (game.processing) return;
   game.processing = true;
   // 베팅 금액이 현재 있는 금액보다 크다면 현재 있는 금액으로 숫자를 바꿔줘야 함.
+  var betText = betInput.value();
+  if (!isNumber(betText) || betText < 1 || betText > game.player.money) {
+    game.gameMessage = "Bet must be a number between 1 and " + game.player.money;
+
+    game.processing = false;
+    redraw();
+    return;
+  } else {
+    game.player.betMoney = Number(betText);
+  }
+
   game.dealer.deck.shuffle();
   game.player.addCard(game.dealer.deck.nextCard());
   game.player.addCard(game.dealer.deck.nextCard());
+
   game.dealer.addCard(game.dealer.deck.nextCard());
-  game.dealer.addCard(game.dealer.deck.nextCard());
+  var temp = game.dealer.deck.nextCard();
+  temp.faceDown = true;
+  game.dealer.addCard(temp);
 
   bettingViewFlag = false;
   playViewFlag = true;
 
   game.processing = false;
   first = true;
+
+  redraw();
 }
 
-function OnHitButtonClicked(){
-  if(game.processing) return;
+function OnHitButtonClicked() {
+  if (game.processing) return;
   game.processing = true;
-  try{
+  try {
     game.player.addCard(game.dealer.deck.nextCard());
-  }catch(e){
-    game.gameMessage = e.message;
+  } catch (e) {
+    game.gameMessage = e.message + '';
+    redraw();
+    return;
   }
 
-  if(game.player.total > 21){
+  if (game.player.getTotal() > 21) {
     game.gameMessage = "You Loose : over 21";
-    game.setting();
-    bettingViewFlag = true;
-    playViewFlag = false;
-    first = true;
-    setTimeout(function(){},500);
+    game.player.money -= game.player.betMoney;
+    redraw();
+    setTimeout(nextView, 2000);
+  } else {
+    game.processing = false;
+    redraw();
   }
-  game.processing = false;
+
 }
 
-function OnStandButtonClicked(){
-  if(game.processing) return;
+function OnStandButtonClicked() {
+
+  if (game.processing) return;
   game.processing = true;
-  while(game.dealer.total <= 16){ // 블랙잭 규칙이 16이하일 때만 딜러가 카드를 뽑음.
-    try{
+  game.dealer.cards.forEach(function(v) {
+    if (v.faceDown) v.faceDown = false;
+  })
+  game.dealer.reveal = true;
+  while (game.dealer.getTotal() <= 16) { // 블랙잭 규칙이 16이하일 때만 딜러가 카드를 뽑음.
+    try {
       game.dealer.addCard(game.dealer.deck.nextCard());
-    }catch(e){
-      game.gameMessage = e.message;
+    } catch (e) {
+      game.gameMessage = e.message + '';
+      redraw();
       break;
     }
   }
-  if(game.player.total > game.dealer.total) {
+  var playerTotal = game.player.getTotal();
+  var dealerTotal = game.dealer.getTotal();
+  if (playerTotal > dealerTotal || dealerTotal > 21) {
     game.gameMessage = "You Win!";
-    game.player.money += game.player.betMoney;
-  }else if(game.player.total < game.dealer.total) {
+    game.playerWin();
+  } else if (playerTotal < dealerTotal) {
     game.gameMessage = "You Loose!";
-    game.player.money -= game.player.betMoney;
-  }else if(game.player.total === game.dealer.total) {
+    game.playerLoose();
+  } else if (playerTotal === dealerTotal) {
     game.gameMessage = "Draw!";
   }
 
-  game.setting();
+  redraw();
+  setTimeout(nextView, 2000);
+}
 
+function nextView() {
+  // 다음 화면으로 전환하고, 버튼의 잠김을 풀어주기 위한 부분이다.
+
+  game.setting();
   bettingViewFlag = true;
   playViewFlag = false;
 
   first = true;
-  setTimeout(function(){},500);
   game.processing = false;
+  redraw();
 }
 
-function OnNewGameButtonClicked(){
+// 나중에 게임이 완전히 Gameover되면 newGame을 통해서 게임이 재시작되로록 해볼 생각이다.
+function OnNewGameButtonClicked() {
   game = new BlackjackGame();
+  redraw();
 }
 
 
@@ -253,31 +365,26 @@ function preload() {
 function setup() {
   game = new BlackjackGame();
   noStroke();
-  //noLoop();
+  noLoop();
   createCanvas(588, 609);
-
 }
 
 function draw() {
   clear();
   draw_blackjackGame();
-  // 게임이 진행됨에 따라 아래의 view 중 하나가 그려 질 것 이다.
-  if(bettingViewFlag) draw_bettingView();
-  if(playViewFlag) draw_PlayView();
-  // 이미지는 이미 받아 왔고, 아래 코드로 포지션에 맞춰서 출력만 잘 해주면 된다.
-  //image(sprite_sheet_image, DealerCardPositionXY[4][0], DealerCardPositionXY[4][1], 79, 123, 79 ,123 ,79 ,123);
 }
 
 function draw_blackjackGame() {
-  draw_GameBoard();
-  draw_money();
+  draw_GameBoard(game.dealer.getTotal(), game.player.getTotal(), game.dealer.reveal);
+  draw_money(game.player.money);
+  draw_cards(game.player.cards, game.dealer.cards);
+  if (bettingViewFlag) draw_bettingView();
+  if (playViewFlag) draw_PlayView();
   draw_GameMessage(game.gameMessage);
 }
 
-
-
 // 나중엔 Sx, Sy를 받아서 그려 줄 것 이다.
-function draw_GameBoard() {
+function draw_GameBoard(dealerTotal, playerTotal, dealerFlag) {
   fill(color('#666600'));
   rect(30, 0, 530, 530);
 
@@ -288,7 +395,12 @@ function draw_GameBoard() {
   translate(40, 10);
   textSize(20);
   fill(color('#99FF99'));
-  text("Dealer's Cards", 30, 25);
+  var dstr = 'Dealer';
+  if (dealerFlag) {
+    var dealerTotalText = dealerTotal + '';
+    dstr += ' ' + dealerTotalText;
+  }
+  text(dstr, 30, 25);
   for (var i = 1; i <= 5; i++) {
     fill(color('#666600'));
     rect(30 + 90 * (i - 1), 40, 83, 127);
@@ -296,7 +408,12 @@ function draw_GameBoard() {
 
   textSize(20);
   fill(color('#99FF99'));
-  text("Player's Cards", 30, 335);
+  var pstr = 'Player';
+  if (playerTotal !== 0) {
+    var playerTotalText = playerTotal + '';
+    pstr += ' ' + playerTotalText;
+  }
+  text(pstr, 30, 335);
 
   for (var i = 1; i <= 5; i++) {
     fill(color('#666600'));
@@ -306,9 +423,10 @@ function draw_GameBoard() {
 }
 
 function draw_bettingView() {
+
   if (first) {
-    if(hitButton != undefined) hitButton.remove();
-    if(standButton != undefined) standButton.remove();
+    if (hitButton != undefined) hitButton.remove();
+    if (standButton != undefined) standButton.remove();
     game.gameMessage = "Insert the betting money";
     draw_input();
     draw_betButton();
@@ -318,11 +436,8 @@ function draw_bettingView() {
 
 function draw_PlayView() {
   if (first) {
-    if(betButton != undefined) betButton.remove();
-    if(betInput != undefined){
-      game.player.betMoney = betInput.value();
-      betInput.remove();
-    }
+    if (betButton != undefined) betButton.remove();
+    if (betInput != undefined) betInput.remove();
     game.gameMessage = "Hit or Stand?";
     draw_Buttons();
     first = false;
@@ -330,7 +445,7 @@ function draw_PlayView() {
   draw_betMoney(game.player.betMoney);
 }
 
-function draw_money() {
+function draw_money(money) {
   // 나중에는 금액을 인자로 받아서 처리
   push();
   translate(40, 10);
@@ -341,7 +456,7 @@ function draw_money() {
 
   textSize(40);
   fill(color('#FFFF00'));
-  text('$100', 50, 270);
+  text('$' + money, 50, 270);
 
   pop();
 }
@@ -356,7 +471,7 @@ function draw_betMoney(money) {
 
   textSize(40);
   fill(color('#FFFF00'));
-  text('$'+money, 390, 270);
+  text('$' + money, 390, 270);
   pop();
 
 }
@@ -364,7 +479,7 @@ function draw_betMoney(money) {
 function draw_GameMessage(str) {
   push();
   translate(40, 10);
-  textSize(40);
+  textSize(30);
   textAlign(CENTER);
   text(str, 250, 570);
   pop();
@@ -384,7 +499,6 @@ function draw_betButton() {
   translate(40, 10);
   betButton = createButton('Betting!');
   betButton.position(450, 260);
-  // bet 금액을 받아와서 저장하고, first를 true 로 만들고, 게임 loop을 진행 시킨다.
   betButton.mousePressed(OnBettingButtonClicked);
   pop();
 }
